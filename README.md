@@ -1,4 +1,3 @@
-Popis úlohy
 Cílem úlohy je vytvořit skript pro analýzu záznamů webového serveru. Skript bude filtrovat záznamy a poskytovat statistiky podle zadání úživatele.
 
 Specifikace chování skriptu

@@ -1,169 +1,102 @@
-Cílem úlohy je vytvořit skript pro analýzu záznamů webového serveru. Skript bude filtrovat záznamy a poskytovat statistiky podle zadání úživatele.
+# Wana – Web Log Analyzer (Shell Script)
 
-Specifikace chování skriptu
-JMÉNO: wana - analyzátor webových logů
-POUŽITÍ: wana [FILTR] [PŘÍKAZ] [LOG [LOG2 [...]]
+## Overview
 
-VOLBY:
-PŘÍKAZ může být jeden z:
-list-ip – výpis seznamu zdrojových IP adres.
-list-hosts – výpis seznamu zdrojových doménových jmen.
-list-uri – výpis seznamu cílových zdrojů (URI).
-hist-ip – výpis histogramu četností dotazů podle zdrojových IP adres.
-hist-load – výpis histogramu zátěže (tj. počtu dotazů v jednotlivých časových intervalech).
-FILTR může být kombinace následujících:
--a DATETIME – after; jsou uvažovány pouze záznamy PO tomto datu (bez tohoto data). DATETIME je formátu YYYY-MM-DD HH:MM:SS.
--b DATETIME – before; jsou uvažovány pouze záznamy PŘED tímto datem (bez tohoto data).
--ip IPADDR – jsou uvažovány pouze záznamy odpovídající požadavkům ze zdrojové adresy IPADDR. Formát IPADDR odpovídá IPv4 nebo IPv6.
--uri URI – jsou uvažovány pouze záznamy týkající se dotazů na konkrétní webovou stránku. URI je základní regulární výraz.
+Wana is a shell script tool for analyzing web server log files. It filters log entries and generates basic statistics such as IP lists, URI lists, hostnames, and histograms of requests over IPs or time.
 
-POPIS
-Skript filtruje záznamy z webového serveru. Pokud je skriptu zadán také příkaz, nad filtrovanými záznamy daný příkaz provede.
-Pokud skript nedostane ani filtr ani příkaz, opisuje záznamy na standardní výstup.
-Skript umí zpracovat záznamy webového serveru komprimované pomocí nástroje gzip (v případě, že název souboru končí .gz).
-V případě, že skript na příkazové řádce nedostane soubory se záznamy webového serveru (LOG, LOG2 …), očekává záznamy na standardním vstupu.
-Pokud má skript vypsat seznam, každá položka je vypsána na jeden řádek a pouze jednou. Na pořadí nezáleží. Položky se nesmí opakovat.
-Víceřádkový histogram je vykreslen pomocí ASCII a je otočený doprava. Každý řádek histogramu udává kategorii (např. IP adresu nebo časový interval). Četnost dané kategorie je vyobrazena posloupností znaku mřížky #. Formát je "%s (%d): %s", kde první argument identifikuje kategorii, druhý je četnost v číselné podobě a třetí je četnost vykreslená pomocí mřížek.
-Histogram podle IP adres (hist-ip) je seřazen od nejčetnějších po nejméně četné dotazy.
-Histogram zátěže (hist-load) má jednotlivé časové intervaly po celých hodinách. Do dané kategorie spadají všechny záznamy počínající danou hodinou. V histogramu budou pouze časové údaje s nenulovým výskytem záznamů. Formát kategorie je YYYY-MM-DD HH:00. Celkový časový rozsah je dán časovým rozsahem vstupních nebo filtrovaných záznamů.
-URI je identifikátor, který se v záznamu nachází za identifikátorem metody protokolu HTTP, viz RFC2616, sekce 9.
+The tool supports working with plain text logs as well as gzip-compressed files.
 
-PODROBNÉ POŽADAVKY
-Skript analyzuje záznamy (logy) pouze ze zadaných souborů.
-Skript žádný soubor nemodifikuje. Skript nepoužívá dočasné soubory.
-IP adresa může být IPv4 (např. 147.229.176.19), IPv6 standardního (např. 2001:67c:1220:8b0:0:0:93e5:b013) nebo IPv6 komprimovaného (např. 2001:67c:1220:8b0::93e5:b013) formátu (viz RFC 1884, sekce 2.2).
-Skript nebere ohled na význam IP adres. IP adresy rozlišuje podle jejich textové reprezentace.
-Skript neuvažuje časové zóny. Předpokládá se, že všechny záznamy i filtry podle data mají časovou značku ve stejné časové zóně.
-Doménové jméno podle IP adresy zjistěte pomocí příkazu host. Pokud nelze doménové jméno získat, bude místo něj použita IP adresa.
+## Features
 
-NÁVRATOVÁ HODNOTA
-Skript vrací úspěch v případě úspěšné operace. Interní chyba skriptu nebo chybné argumenty budou doprovázeny chybovým hlášením a neúspěšným návratovým kódem.
-Implementační detaily
-Skript by měl běžet na všech běžných shellech (dash, ksh, bash). Pokud použijete vlastnost specifickou pro nějaký shell, uveďte to pomocí direktivy interpretu na prvním řádku souboru, např. #!/bin/bash nebo #!/usr/bin/env bash pro bash. Můžete použít GNU rozšíření pro sed či awk. Jazyky Perl, Python, Ruby, atd. povoleny nejsou.
+* Filtering log entries by:
 
-UPOZORNĚNÍ: některé servery, např. merlin.fit.vutbr.cz, mají symlink /bin/sh -> bash. Ověřte si proto, že skript skutečně testujete daným shellem. Doporučujeme ověřit správnou funkčnost pomocí virtuálního stroje níže.
+  * time range (`-a`, `-b`)
+  * source IP (`-ip`)
+  * URI (`-uri`, regex support)
+* Extracting unique values:
 
-Skript musí běžet na běžně dostupných OS GNU/Linux, BSD a MacOS. Studentům je k dispozici virtuální stroj s obrazem ke stažení zde (pro VirtualBox, login: ios / heslo: ios-shell), na kterém lze ověřit správnou funkčnost projektu.
+  * source IP addresses
+  * hostnames (resolved via `host`)
+  * requested URIs
+* Generating histograms:
 
-Příklady:
+  * request count per IP (`hist-ip`)
+  * request load per hour (`hist-load`)
+* Works with multiple log files or standard input
+* Supports `.gz` compressed logs
 
-$ ./wana list-ip ios-example.com.access.log
-147.229.13.201
-198.27.69.191
-2001:67c:1220:808::93e5:8ad
-2001:67c:1220:80c:d4:985a:df2c:d717
-40.77.167.115
-66.249.66.45
-66.249.66.49
-82.202.69.253
+## Usage
 
-$ ./wana list-hosts ios-example.com.access.log
-hele.fit.vutbr.cz.
-ns504614.ip-198-27-69.net.
-perchta.fit.vutbr.cz.
-2001:67c:1220:80c:d4:985a:df2c:d717
-msnbot-40-77-167-115.search.msn.com.
-crawl-66-249-66-45.googlebot.com.
-crawl-66-249-66-49.googlebot.com.
-82.202.69.253
+```bash id="q1p8l2"
+wana [FILTER] [COMMAND] [LOG [LOG2 [...]]]
+```
 
-$ ./wana -a "2026-02-22 09:00:00" -b "2026-02-22 09:44:54" ios-example.com.access.log
-147.229.13.201 - - [22/Feb/2026:09:24:33 +0100] "-" 408 3275 "-" "-"
-147.229.13.201 - - [22/Feb/2026:09:24:33 +0100] "-" 408 3275 "-" "-"
-198.27.69.191 - - [22/Feb/2026:09:43:13 +0100] "GET / HTTP/1.1" 200 22311 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0"
-198.27.69.191 - - [22/Feb/2026:09:43:24 +0100] "GET / HTTP/1.1" 200 22313 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0"
-198.27.69.191 - - [22/Feb/2026:09:43:42 +0100] "GET /?gf_page=upload HTTP/1.1" 200 22304 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0"
-198.27.69.191 - - [22/Feb/2026:09:44:07 +0100] "GET / HTTP/1.1" 200 22313 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:64.0) Gecko/20100101 Firefox/64.0"
-198.27.69.191 - - [22/Feb/2026:09:44:37 +0100] "GET /?up_auto_log=true HTTP/1.1" 200 22315 "-" "Mozilla/5.0 (Windows NT 6.1; rv:36.0) Gecko/20100101 Firefox/36.0"
+If no command or filter is provided, raw log data is printed.
 
-$ ./wana -a "2026-02-22 09:00:00" -b "2026-02-22 09:44:54" list-uri ios-example.com.access.log
-/
-/?gf_page=upload
-/?up_auto_log=true
+## Commands
 
-$ ./wana hist-ip ios-example.com.access.log
-198.27.69.191 (8): ########
-2001:67c:1220:80c:d4:985a:df2c:d717 (4): ####
-82.202.69.253 (2): ##
-2001:67c:1220:808::93e5:8ad (2): ##
-147.229.13.201 (2): ##
-66.249.66.49 (1): #
-66.249.66.45 (1): #
-40.77.167.115 (1): #
+* `list-ip` – list unique source IPs
+* `list-hosts` – list resolved hostnames
+* `list-uri` – list requested URIs
+* `hist-ip` – histogram of requests per IP (sorted by frequency)
+* `hist-load` – hourly request load histogram
 
-$ ./wana -ip 2001:67c:1220:808::93e5:8ad hist-load ios-example.com.access.log.1 
-2026-02-21 08:00 (1): #
-2026-02-21 10:00 (1): #
-2026-02-21 14:00 (1): #
-2026-02-21 16:00 (1): #
-2026-02-21 19:00 (1): #
-2026-02-21 20:00 (1): #
-2026-02-21 22:00 (1): #
-2026-02-21 23:00 (1): #
-2026-02-22 02:00 (1): #
-2026-02-22 03:00 (2): ##
-2026-02-22 05:00 (1): #
-2026-02-22 07:00 (1): #
+## Filters
 
-$ ./wana -uri "/robots\.txt" list-hosts *log*
-msnbot-157-55-39-15.search.msn.com.
-msnbot-157-55-39-17.search.msn.com.
-msnbot-157-55-39-25.search.msn.com.
-msnbot-157-55-39-31.search.msn.com.
-msnbot-157-55-39-34.search.msn.com.
-msnbot-157-55-39-35.search.msn.com.
-msnbot-157-55-39-5.search.msn.com.
-census3.shodan.io.
-crawl3.bl.semrush.com.
-crawl7.bl.semrush.com.
-crawl8.bl.semrush.com.
-crawl12.bl.semrush.com.
-crawl14.bl.semrush.com.
-crawl22.bl.semrush.com.
-5-255-253-34.spider.yandex.com.
-5-45-207-35.spider.yandex.com.
-crawl-66-249-64-81.googlebot.com.
-crawl-66-249-66-45.googlebot.com.
-crawl-66-249-66-47.googlebot.com.
-crawl-66-249-66-49.googlebot.com.
-crawl-66-249-73-23.googlebot.com.
-crawl-66-249-75-143.googlebot.com.
-186-89-162-69.static.reverse.lstn.net.
-sky.census.shodan.io.
+* `-a DATETIME` – after (exclusive)
+* `-b DATETIME` – before (exclusive)
+* `-ip IP` – filter by source IP (IPv4/IPv6)
+* `-uri REGEX` – filter by URI pattern
 
-$ ./wana -uri "/robots\.txt" hist-load *log*
-2026-02-08 09:00 (1): #
-2026-02-08 10:00 (1): #
-2026-02-10 07:00 (1): #
-2026-02-10 09:00 (1): #
-2026-02-10 20:00 (1): #
-2026-02-11 05:00 (2): ##
-2026-02-12 16:00 (1): #
-2026-02-12 19:00 (1): #
-2026-02-13 04:00 (2): ##
-2026-02-13 12:00 (1): #
-2026-02-13 15:00 (2): ##
-2026-02-14 09:00 (1): #
-2026-02-14 12:00 (1): #
-2026-02-14 22:00 (1): #
-2026-02-15 01:00 (1): #
-2026-02-15 11:00 (1): #
-2026-02-15 17:00 (1): #
-2026-02-16 01:00 (2): ##
-2026-02-16 04:00 (1): #
-2026-02-16 16:00 (2): ##
-2026-02-16 22:00 (1): #
-2026-02-17 16:00 (1): #
-2026-02-17 21:00 (1): #
-2026-02-18 03:00 (2): ##
-2026-02-18 07:00 (2): ##
-2026-02-18 18:00 (1): #
-2026-02-19 01:00 (1): #
-2026-02-19 11:00 (1): #
-2026-02-19 18:00 (1): #
-2026-02-20 13:00 (2): ##
-2026-02-20 18:00 (1): #
-2026-02-21 11:00 (1): #
-2026-02-21 23:00 (1): #
-2026-02-22 07:00 (2): ##
-2026-02-22 10:00 (1): #
+Datetime format:
+
+```
+YYYY-MM-DD HH:MM:SS
+```
+
+## Output format
+
+### Lists
+
+* One item per line
+* Unique values only
+* Order is not guaranteed (unless specified by command)
+
+### Histograms
+
+Format:
+
+```
+CATEGORY (COUNT): #####
+```
+
+* `hist-ip` sorted by frequency (descending)
+* `hist-load` grouped by hour (`YYYY-MM-DD HH:00`)
+
+## Requirements
+
+* POSIX-compatible shell (bash/dash/ksh)
+* GNU tools allowed (`awk`, `sed`, etc.)
+* No Python / Perl / Ruby
+* No temporary files
+* No modification of input files
+
+## Implementation notes
+
+* Uses `host` for reverse DNS lookup
+* Supports IPv4 and IPv6 (treated as strings)
+* Works with piped input or file arguments
+* Handles `.gz` logs transparently
+
+## Key concepts
+
+* Text processing in shell
+* Log parsing
+* Filtering pipelines
+* Aggregation and counting
+* Histogram generation
+* Working with system utilities (`awk`, `sed`, `sort`, `uniq`)
+
+## Disclaimer
+
+This project was created as part of a university assignment focused on shell scripting, text processing, and log analysis.

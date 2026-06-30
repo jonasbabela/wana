@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+cmd=""
+
+aft_date=""
+bef_date=""
+ip_val=""
+uri_val=""
+
+date_regex="^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$"
+
+declare -a files
+
+# Convert text month into a number
+# @param 1 month by word
+function convert_month ()
+{
+	case "$1" in
+		"Jan") echo "01" ;;
+		"Feb") echo "02" ;;
+		"Mar") echo "03" ;;
+		"Apr") echo "04" ;;
+		"May") echo "05" ;;
+		"Jun") echo "06" ;;
+		"Jul") echo "07" ;;
+		"Aug") echo "08" ;;
+		"Sep") echo "09" ;;
+		"Oct") echo "10" ;;
+		"Nov") echo "11" ;;
+		"Dec") echo "12" ;;
+
+	esac
+}
+
+# Apply filters to log lines, return 1 if not matched
+# @param 1 log line
+function apply_filters ()
+{
+	line="$1"
+	
+	# Filter by IP address
+	if [[ "$ip_val" != "" ]]; then
+		ip=$(awk -F'[ ]' '{print $1}' < <(echo "$line"))
+		
+		if [[ "$ip" != "$ip_val" ]]; then 
+			return 1
+		fi
+	fi
+
+	# If time comparision selected as filter, parse date
+	if [[ "$aft_date" != "" || "$bef_date" != "" ]]; then
+		
+		date=$(awk -F'[][]' '{print $2}' < <(echo "$line")) # Separate date from log line
+
+		# Transpose separated date into YYYYMMDDHHMMSS format
+		read -r yr_log mon_log day_log hr_log min_log sec_log < <((awk -F'[/: ]' '{print $3, $2, $1, $4, $5, $6}') <<< "$date")
+		mon_log=$(convert_month "$mon_log") # Convert text month into a number
+		date="$yr_log$mon_log$day_log$hr_log$min_log$sec_log" # Transpose user input into YYYYMMDDHHMMSS format
+
+	fi
+
+	# Filter by after time
+	if [[ "$aft_date" != "" ]]; then
+
+		aft_date=${aft_date//[: -]/} # Delete all :, - and spaces to create one large number
+
+		if (( "$aft_date" >= "$date" )); then return 1
+		fi
+	fi
+
+	# Filter by before time
+	if [[ "$bef_date" != "" ]]; then
+
+		bef_date=${bef_date//[: -]/} # Delete all :, - and spaces to create one large number
+
+		if (( "$bef_date" <= "$date" )); then return 1
+		fi
+
+		
+	fi
+
+	# Filter by URI
+	if [[ "$uri_val" != "" ]]; then
+		uri=$(awk '{print $7}' <<< "$line")
+		
+		if [[ ! "$uri" =~ $uri_val ]]; then 
+			return 1
+		fi
+	fi
+}
+
+# Open file from user's input; if no file found wait for input on stdin
+function open_file ()
+{
+
+	# If no file paths are inserted, use stdin
+	if [[ ${#files[@]} -eq 0 ]]; then
+		cat
+	else
+		for file in "${files[@]}"; do
+
+			# If in .gz format, use zcat
+			if [[ "$file" == *.gz ]]; then
+				zcat "$file"
+
+			# If in classic .log format, use cat
+			elif [[ "$file" == *.log* ]]; then
+				cat "$file"
+			
+			# If not in any desired format, raise error
+			else
+				error_raise "Error: Invalid argument."
+			fi
+		done
+	fi
+}
+
+# Find domain names of IP addresses, return IP address if domain name not found
+# @param 1 IP address
+function find_host ()
+{
+	ip="$1"
+
+	# Save domain name if found
+	domain=$(host "$ip" | grep "domain name pointer" | awk '{print $NF}')
+	
+	# Check if domain name was found
+	if [[ "$domain" != "" ]]; then
+		echo "$domain"
+	else 
+		echo "$ip"
+	fi
+}
+
+# Print error message and return script with return value 1
+# @param 1 error message
+function error_raise ()
+{
+	echo "$1"
+	exit 1
+}
+
+# Check if inserted date has right format
+# @param 1 date
+function check_date ()
+{
+	# If inserted date does not match regular expression, raise error
+	if [[ ! "$1" =~ $date_regex ]]; then
+		error_raise "Error: Invalid date format inserted"
+	fi
+}
+
+# Parse user arguments
+while [[ $# -gt 0 ]]; do
+
+	case "$1" in 
+		"list-ip") 
+
+			# If other command was inserted before, raise error
+			if [[ "$cmd" != "" ]]; then 
+				error_raise "Too many commands" 
+			fi 
+			cmd=ip;;
+		"list-hosts") 
+			if [[ "$cmd" != "" ]]; then 
+				error_raise "Too many commands" 
+			fi 
+			cmd=hosts ;;
+		"list-uri") 
+			if [[ "$cmd" != "" ]]; then 
+				error_raise "Too many commands" 
+			fi 
+			cmd=uri ;;
+		"hist-ip") 
+			if [[ "$cmd" != "" ]]; then 
+				error_raise "Too many commands" 
+			fi 
+			cmd=hip ;;
+		"hist-load") 
+			if [[ "$cmd" != "" ]]; then 
+				error_raise "Too many commands" 
+			fi 
+			cmd=hload ;;
+	
+		"-a")
+			shift
+			aft_date="$1"
+			check_date "$aft_date"
+			;;
+		"-b")
+			shift
+			bef_date="$1"
+			check_date "$bef_date"
+			;;
+		"-ip")
+			shift
+			ip_val="$1"
+			;;
+		"-uri")
+			shift
+			uri_val="$1"
+			;;
+		*)
+			files+=("$1")
+			;;
+
+		esac	
+
+	shift
+done
+
+# Open file and load lines one by one
+open_file | while read -r line; do
+
+	# If not suitable for filters, skip the line
+	apply_filters "$line" || continue
+
+	# Select output format based on user's command 
+	case "$cmd" in
+		"ip" | "hip")
+			line=$(awk '{print $1}' <<< "$line")
+			echo "$line"
+			;;
+		"hload")
+			line=$(awk -F'[][]' '{print $2}' < <(echo "$line"))
+			read -r yr_log mon_log day_log hr_log < <((awk -F'[/: ]' '{print $3, $2, $1, $4}') <<< "$line")
+			mon_log=$(convert_month "$mon_log") # Convert text month into a number
+			echo "$yr_log-$mon_log-$day_log $hr_log" # Transpose user input into YYYY-MM-DD HH format
+			;;
+		"hosts")
+			line=$(awk '{print $1}' <<< "$line")
+			find_host "$line"
+			;;
+		"uri")
+			line=$(awk '{print $7}' <<< "$line")
+			
+			if [[ "$line" == /* ]]; then
+				echo "$line" 
+			fi
+			;;
+		*)
+			echo "$line"
+			;;
+	esac
+
+done | if [[ "$cmd" == "hip" ]]; then
+
+		# Create histogram of IP addresses
+		sort | uniq -c | sort -r | while read -r line; do
+
+				num=$(awk '{print $1}' <<< "$line") # Save count of each IP address
+				line=$(awk '{print $2}' <<< "$line") # Save the IP adress
+				echo -n "$line ($num): " # Print with leaving space for the #-histogram
+				
+				# Add correct number of #s
+				for ((i=0; i<num; i++)); do
+					echo -n "#"
+				done
+
+				# New line
+				echo ""
+
+		done
+	
+	elif [[ "$cmd" == "hload" ]]; then
+
+		sort | uniq -c | while read -r line; do
+			
+			num=$(awk '{print $1}' <<< "$line") # Save count of each hour
+
+			line=$(awk '{print $2, $3}' <<< "$line") # Save the date
+			echo -n "$line:00 ($num): " # Print with leaving space for the #-histogram
+
+			# Add correct number of #s
+			for ((i=0; i<num; i++)); do
+				echo -n "#"
+			done
+
+			# New line
+			echo ""
+		done
+
+	elif [[ "$cmd" == "" ]]; then sort  # If no command is inserted, print all lines
+
+	else sort -u # If only filters, or no filters, are inserted, print all unique lines
+	
+fi
